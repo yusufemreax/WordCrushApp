@@ -1,33 +1,40 @@
-import { CellPosition } from "../../types/game";
+import {CellPosition} from '../../types/game';
 
 export const getCellFromTouch = ({
-    x,
-    y,
-    cellSize,
-    cellGap,
-    gridSize
+  x,
+  y,
+  cellSize,
+  cellGap,
+  gridSize,
 }: {
-    x: number;
-    y: number;
-    cellSize: number;
-    cellGap: number;
-    gridSize: number;
-}) : CellPosition | null => {
-    const fullCellSize = cellSize + cellGap;
+  x: number;
+  y: number;
+  cellSize: number;
+  cellGap: number;
+  gridSize: number;
+}): CellPosition | null => {
+  const fullCellSize = cellSize + cellGap;
+  const boardSize = gridSize * fullCellSize - cellGap;
 
-    const col = Math.floor(x / fullCellSize);
-    const row = Math.floor(y / fullCellSize);
+  if (x < 0 || y < 0 || x > boardSize || y > boardSize) {
+    return null;
+  }
 
-    if (row < 0 || row >= gridSize || col < 0 || col >= gridSize) {
-        return null;
-    }
+  const col = Math.floor(x / fullCellSize);
+  const row = Math.floor(y / fullCellSize);
 
-    const offsetX = x - col * fullCellSize;
-    const offsetY = y - row * fullCellSize;
+  if (row < 0 || row >= gridSize || col < 0 || col >= gridSize) {
+    return null;
+  }
 
-    if (offsetX > cellSize || offsetY > cellSize) {
-        return null;
-    }
+  const offsetX = x - col * fullCellSize;
+  const offsetY = y - row * fullCellSize;
 
-    return {row, col};
+  const tolerance = gridSize === 6 ? cellGap * 0.35 : cellGap;
+
+  if (offsetX > cellSize + tolerance || offsetY > cellSize + tolerance) {
+    return null;
+  }
+
+  return {row, col};
 };

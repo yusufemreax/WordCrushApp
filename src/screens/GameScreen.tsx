@@ -234,6 +234,7 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
     const currentSelectedCells = selectedCellsRef.current;
 
     if (currentSelectedCells.length === 0) {
+      selectedCellsRef.current = [pressedCell];
       setSelectedCells([pressedCell]);
       return;
     }
@@ -245,14 +246,13 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
     const lastSelectedCell =
       currentSelectedCells[currentSelectedCells.length - 1];
 
-    const isNear = Math.abs(lastSelectedCell.row - pressedCell.row) <= 1 && Math.abs(lastSelectedCell.col - pressedCell.col) <= 1;
-
-    if (!isNear) {
+    if(!isAdjacentCell(lastSelectedCell, pressedCell)) {
       return;
     }
 
     const nextCells = [...currentSelectedCells, pressedCell];
-    selectedCellsRef.current = nextCells
+
+    selectedCellsRef.current = nextCells;
     setSelectedCells(nextCells);
   };
 
@@ -273,8 +273,9 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
       Alert.alert('Oyun bitti', 'Hamle hakkın kalmadı.');
       return;
     }
+    const selectedCellsSnapshot = [...selectedCellsRef.current];
 
-    if(selectedCellsRef.current.length < 3) {
+    if(selectedCellsSnapshot.length < 3) {
       setRemainingMoves(prev => Math.max(prev - 1, 0));
       setLastResultMessage(GAME_MESSAGES.invalidShortSelectionMoveLost);
 
@@ -282,7 +283,6 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
       return;
     }
 
-    const selectedCellsSnapshot = [...selectedCellsRef.current];
     const word = selectedCellsSnapshot
       .map(position => grid[position.row]?.[position.col]?.letter ?? '')
       .join('');

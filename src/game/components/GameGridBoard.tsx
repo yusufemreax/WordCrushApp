@@ -5,6 +5,15 @@ import {isSameCell} from '../utils/cellHelper';
 import { getSpecialTileLabel } from '../utils/specialTileHelpers';
 import { getCellFromTouch } from '../utils/gridTouchHelpers';
 
+type CellLayout = {
+  row: number;
+  col: number;
+  pageX: number;
+  pageY: number;
+  width: number;
+  height: number;
+};
+
 type Props = {
   grid: (Cell | null)[][];
   gridSize: number;
@@ -72,14 +81,16 @@ const GameGridBoard: React.FC<Props> = ({
     height: 0,
   });
 
-  const handleBoardTouch = async (pageX: number, pageY: number, phase: 'start' | 'move') => {
+  const handleBoardTouch = async (
+    pageX: number,
+    pageY: number,
+    phase: 'start' | 'move',
+  ) => {
     if (isGameFinished || isResolvingMove) {
       return;
     }
 
-    const localX = pageX - boardLayoutRef.current.pageX;
-    const localY = pageY - boardLayoutRef.current.pageY;
-    const touchedCell = getCellFromTouch({x: localX, y: localY, cellSize, cellGap, gridSize});
+    const touchedCell = getTouchedCellFromPagePoint(pageX, pageY);
 
     if (!touchedCell) {
       return;
@@ -108,29 +119,90 @@ const GameGridBoard: React.FC<Props> = ({
     });
   };
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => !isGameFinished && !isResolvingMove,
-      onMoveShouldSetPanResponder: () => !isGameFinished && !isResolvingMove,
-      onPanResponderGrant: event => {
-        onGestureActiveChange(true);
-        const {pageX, pageY} = event.nativeEvent;
-        handleBoardTouch(pageX, pageY, 'start');
-      },
-      onPanResponderMove: event => {
-        const {pageX, pageY} = event.nativeEvent;
-        handleBoardTouch(pageX, pageY, 'move');
-      },
-      onPanResponderRelease: async () => {
-        onGestureActiveChange(false);
-        await onSelectionEnd();
-      },
-      onPanResponderTerminate: async () => {
-        onGestureActiveChange(false);
-        await onSelectionEnd();
-      },
-    }),
-  ).current;
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () =>
+          !isGameFinished && !isResolvingMove,
+
+        onMoveShouldSetPanResponder: () =>
+          !isGameFinished && !isResolvingMove,
+
+        onPanResponderGrant: event => {
+          onGestureActiveChange(true);
+          const {pageX, pageY} = event.nativeEvent;
+          handleBoardTouch(pageX, pageY, 'start');
+        },
+
+        onPanResponderMove: event => {
+          const {pageX, pageY} = event.nativeEvent;
+          handleBoardTouch(pageX, pageY, 'move');
+        },
+
+        onPanResponderRelease: () => {
+          onGestureActiveChange(false);
+          onSelectionEnd();
+        },
+
+        onPanResponderTerminate: () => {
+          onGestureActiveChange(false);
+          onSelectionEnd();
+        },
+
+        onShouldBlockNativeResponder: () => true,
+      }),
+    [
+      isGameFinished,
+      isResolvingMove,
+      onGestureActiveChange,
+      onSelectionEnd,
+      handleBoardTouch,
+    ],
+  );
+
+  const cellLayoutsRef = useRef<CellLayout[]>([]);
+  const cellRefs = useRef<Record<string, View | null>>({});
+
+  const measureCell = (row: number, col: number) => {
+    const key = `${row}-${col}`;
+    const ref = cellRefs.current[key];
+
+    if (!ref) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      ref.measure((_x, _y, width, height, pageX, pageY) => {
+        const nextLayouts = cellLayoutsRef.current.filter(
+          item => !(item.row === row && item.col === col),
+        );
+
+        nextLayouts.push({
+          row,
+          col,
+          pageX,
+          pageY,
+          width,
+          height,
+        });
+
+        cellLayoutsRef.current = nextLayouts;
+      });
+    });
+  };
+
+  const getTouchedCellFromPagePoint = (pageX: number, pageY: number) => {
+    return (
+      cellLayoutsRef.current.find(layout => {
+        return (
+          pageX >= layout.pageX &&
+          pageX <= layout.pageX + layout.width &&
+          pageY >= layout.pageY &&
+          pageY <= layout.pageY + layout.height
+        );
+      }) ?? null
+    );
+  };
 
   return (
     <View style={styles.grid}>
@@ -167,6 +239,8 @@ const GameGridBoard: React.FC<Props> = ({
 
               return (
                 <View
+                  ref={ref => {cellRefs.current[`${cell.row}-${cell.col}`] = ref}}
+                  onLayout={() => measureCell(cell.row, cell.col)}
                   key={`${cell.row}-${cell.col}`}
                   style={[
                     styles.cell,
