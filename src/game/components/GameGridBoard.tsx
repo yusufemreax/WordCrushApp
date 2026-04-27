@@ -1,9 +1,15 @@
-import React, { useMemo, useRef } from 'react';
-import {Animated, LayoutChangeEvent, PanResponder, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View} from 'react-native';
+import React, {useMemo, useRef} from 'react';
+import {
+  Animated,
+  PanResponder,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import {Cell, CellPosition} from '../../types/game';
 import {isSameCell} from '../utils/cellHelper';
-import { getSpecialTileLabel } from '../utils/specialTileHelpers';
-import { getCellFromTouch } from '../utils/gridTouchHelpers';
+import {getSpecialTileLabel} from '../utils/specialTileHelpers';
 
 type CellLayout = {
   row: number;
@@ -21,8 +27,8 @@ type Props = {
   isResolvingMove: boolean;
   selectedCells: CellPosition[];
   explodingCells: CellPosition[];
-  columnFallAnimsRef: React.RefObject<Animated.Value[]>;
-  columnOpacityAnimsRef: React.RefObject<Animated.Value[]>;
+  columnFallAnimsRef: React.MutableRefObject<Animated.Value[]>;
+  columnOpacityAnimsRef: React.MutableRefObject<Animated.Value[]>;
   onSelectionStart: (row: number, col: number) => void | Promise<void>;
   onSelectionMove: (row: number, col: number) => void | Promise<void>;
   onSelectionEnd: () => void | Promise<void>;
@@ -43,15 +49,10 @@ const GameGridBoard: React.FC<Props> = ({
   onSelectionEnd,
   onGestureActiveChange,
 }) => {
-  const isSelected = (row: number, col: number) => {
-    return selectedCells.some(cell => isSameCell(cell, {row, col}));
-  };
-
-  const isExploding = (row: number, col: number) => {
-    return explodingCells.some(cell => isSameCell(cell, {row, col}));
-  };
-
   const {width} = useWindowDimensions();
+
+  const cellLayoutsRef = useRef<CellLayout[]>([]);
+  const cellRefs = useRef<Record<string, View | null>>({});
 
   const cellSize = useMemo(() => {
     const horizontalPadding = 32;
@@ -73,13 +74,58 @@ const GameGridBoard: React.FC<Props> = ({
   }, [gridSize, width]);
 
   const cellGap = 4;
+  const boardSize = gridSize * cellSize + (gridSize - 1) * cellGap;
 
-  const boardLayoutRef = useRef({
-    pageX: 0,
-    pageY: 0,
-    width: 0,
-    height: 0,
-  });
+  const isSelected = (row: number, col: number) => {
+    return selectedCells.some(cell => isSameCell(cell, {row, col}));
+  };
+
+  const isExploding = (row: number, col: number) => {
+    return explodingCells.some(cell => isSameCell(cell, {row, col}));
+  };
+
+  const measureCell = (row: number, col: number) => {
+    const ref = cellRefs.current[`${row}-${col}`];
+
+    if (!ref) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      ref.measure((_x, _y, measuredWidth, measuredHeight, pageX, pageY) => {
+        const filteredLayouts = cellLayoutsRef.current.filter(
+          item => !(item.row === row && item.col === col),
+        );
+
+        cellLayoutsRef.current = [
+          ...filteredLayouts,
+          {
+            row,
+            col,
+            pageX,
+            pageY,
+            width: measuredWidth,
+            height: measuredHeight,
+          },
+        ];
+      });
+    });
+  };
+
+  const getTouchedCell = (pageX: number, pageY: number) => {
+    const tolerance = 4;
+
+    return (
+      cellLayoutsRef.current.find(item => {
+        return (
+          pageX >= item.pageX - tolerance &&
+          pageX <= item.pageX + item.width + tolerance &&
+          pageY >= item.pageY - tolerance &&
+          pageY <= item.pageY + item.height + tolerance
+        );
+      }) ?? null
+    );
+  };
 
   const handleBoardTouch = async (
     pageX: number,
@@ -90,7 +136,7 @@ const GameGridBoard: React.FC<Props> = ({
       return;
     }
 
-    const touchedCell = getTouchedCellFromPagePoint(pageX, pageY);
+    const touchedCell = getTouchedCell(pageX, pageY);
 
     if (!touchedCell) {
       return;
@@ -104,21 +150,6 @@ const GameGridBoard: React.FC<Props> = ({
     await onSelectionMove(touchedCell.row, touchedCell.col);
   };
 
-  const boardRef = useRef<View | null>(null);
-
-  const handleLayout = (_event: LayoutChangeEvent) => {
-    requestAnimationFrame(() => {
-      boardRef.current?.measure((x, y, width, height, pageX, pageY) => {
-        boardLayoutRef.current = {
-          pageX,
-          pageY,
-          width,
-          height,
-        };
-      });
-    });
-  };
-
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -130,6 +161,7 @@ const GameGridBoard: React.FC<Props> = ({
 
         onPanResponderGrant: event => {
           onGestureActiveChange(true);
+
           const {pageX, pageY} = event.nativeEvent;
           handleBoardTouch(pageX, pageY, 'start');
         },
@@ -160,58 +192,11 @@ const GameGridBoard: React.FC<Props> = ({
     ],
   );
 
-  const cellLayoutsRef = useRef<CellLayout[]>([]);
-  const cellRefs = useRef<Record<string, View | null>>({});
-
-  const measureCell = (row: number, col: number) => {
-    const key = `${row}-${col}`;
-    const ref = cellRefs.current[key];
-
-    if (!ref) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      ref.measure((_x, _y, width, height, pageX, pageY) => {
-        const nextLayouts = cellLayoutsRef.current.filter(
-          item => !(item.row === row && item.col === col),
-        );
-
-        nextLayouts.push({
-          row,
-          col,
-          pageX,
-          pageY,
-          width,
-          height,
-        });
-
-        cellLayoutsRef.current = nextLayouts;
-      });
-    });
-  };
-
-  const getTouchedCellFromPagePoint = (pageX: number, pageY: number) => {
-    return (
-      cellLayoutsRef.current.find(layout => {
-        return (
-          pageX >= layout.pageX &&
-          pageX <= layout.pageX + layout.width &&
-          pageY >= layout.pageY &&
-          pageY <= layout.pageY + layout.height
-        );
-      }) ?? null
-    );
-  };
-
   return (
     <View style={styles.grid}>
-      <View 
-        ref={boardRef}
-        onLayout={handleLayout}
+      <View
         {...panResponder.panHandlers}
-        style={[styles.gridColumns, {width: gridSize * (cellSize + cellGap)}]}
-      >
+        style={[styles.gridColumns, {width: boardSize}]}>
         {Array.from({length: gridSize}, (_, colIndex) => (
           <Animated.View
             key={`col-${colIndex}`}
@@ -229,7 +214,14 @@ const GameGridBoard: React.FC<Props> = ({
                 return (
                   <View
                     key={`empty-${rowIndex}-${colIndex}`}
-                    style={[styles.cellEmpty, {width: cellSize, height: cellSize}]}
+                    style={[
+                      styles.cellEmpty,
+                      {
+                        width: cellSize,
+                        height: cellSize,
+                        margin: cellGap / 2,
+                      },
+                    ]}
                   />
                 );
               }
@@ -239,7 +231,9 @@ const GameGridBoard: React.FC<Props> = ({
 
               return (
                 <View
-                  ref={ref => {cellRefs.current[`${cell.row}-${cell.col}`] = ref}}
+                  ref={ref => {
+                    cellRefs.current[`${cell.row}-${cell.col}`] = ref;
+                  }}
                   onLayout={() => measureCell(cell.row, cell.col)}
                   key={`${cell.row}-${cell.col}`}
                   style={[
@@ -247,31 +241,36 @@ const GameGridBoard: React.FC<Props> = ({
                     {
                       width: cellSize,
                       height: cellSize,
+                      margin: cellGap / 2,
                     },
                     cell.specialTile && styles.specialCell,
                     selected && styles.cellSelected,
                     exploding && styles.cellExploding,
-                ]}>
+                  ]}>
                   <Text
                     style={[
                       styles.letter,
                       {
                         fontSize: cell.specialTile
-                          ? gridSize === 10 
+                          ? gridSize === 10
                             ? 9
                             : gridSize === 8
-                              ? 10
-                              : 11
+                            ? 10
+                            : 11
                           : gridSize === 10
-                            ? 12
-                            : gridSize === 8 
-                              ? 14
-                              : 16
+                          ? 12
+                          : gridSize === 8
+                          ? 14
+                          : 16,
                       },
                       selected && styles.letterSelected,
                       exploding && styles.letterExploding,
                     ]}>
-                    {cell.specialTile ?`${cell.letter} ${getSpecialTileLabel(cell.specialTile)}`  : cell.letter}
+                    {cell.specialTile
+                      ? `${cell.letter} ${getSpecialTileLabel(
+                          cell.specialTile,
+                        )}`
+                      : cell.letter}
                   </Text>
                 </View>
               );
@@ -289,16 +288,17 @@ const styles = StyleSheet.create({
   grid: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   gridColumns: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   column: {
     flexDirection: 'column',
   },
   cell: {
-    margin: 2,
     backgroundColor: '#FFF',
     borderRadius: 6,
     alignItems: 'center',
@@ -306,6 +306,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E6D7BE',
     overflow: 'hidden',
+  },
+  specialCell: {
+    backgroundColor: '#F7E7B4',
+    borderColor: '#D4A017',
   },
   cellSelected: {
     backgroundColor: '#D98E04',
@@ -316,7 +320,6 @@ const styles = StyleSheet.create({
     opacity: 0.12,
   },
   letter: {
-    fontSize: 14,
     fontWeight: '700',
     color: '#3B2F2F',
     textAlign: 'center',
@@ -328,15 +331,10 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
   cellEmpty: {
-    margin: 2,
     backgroundColor: '#F3E6D3',
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#E6D7BE',
     opacity: 0.75,
-  },
-  specialCell: {
-    backgroundColor: '#F7E7B4',
-    borderColor: '#D4A017',
   },
 });
