@@ -1,7 +1,6 @@
 import React from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-import {ActiveJokerType, JokerInventory, JokerType} from '../../types/game';
-
+import {ActiveJokerType, JokerInventory} from '../../types/game';
 
 type Props = {
   inventory: JokerInventory;
@@ -18,6 +17,10 @@ const JokerBar: React.FC<Props> = ({
   isGameFinished,
   onToggleJoker,
 }) => {
+  const isDisabled = (count: number) => {
+    return count <= 0 || isResolvingMove || isGameFinished;
+  };
+
   return (
     <View style={styles.jokerBar}>
       <TouchableOpacity
@@ -26,9 +29,20 @@ const JokerBar: React.FC<Props> = ({
           activeJoker === 'fish' && styles.jokerButtonActive,
           inventory.fish <= 0 && styles.jokerButtonDisabled,
         ]}
-        onPress={() => onToggleJoker('fish')}
-        disabled={inventory.fish <= 0 || isResolvingMove || isGameFinished}>
+        onPress={() => onToggleJoker(activeJoker === 'fish' ? null : 'fish')}
+        disabled={isDisabled(inventory.fish)}>
         <Text style={styles.jokerButtonText}>Balık ({inventory.fish})</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.jokerButton,
+          activeJoker === 'wheel' && styles.jokerButtonActive,
+          inventory.wheel <= 0 && styles.jokerButtonDisabled,
+        ]}
+        onPress={() => onToggleJoker(activeJoker === 'wheel' ? null : 'wheel')}
+        disabled={isDisabled(inventory.wheel)}>
+        <Text style={styles.jokerButtonText}>Tekerlek ({inventory.wheel})</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -38,14 +52,49 @@ const JokerBar: React.FC<Props> = ({
           inventory.lollipop <= 0 && styles.jokerButtonDisabled,
         ]}
         onPress={() =>
-          onToggleJoker('lollipop')
+          onToggleJoker(activeJoker === 'lollipop' ? null : 'lollipop')
         }
-        disabled={
-          inventory.lollipop <= 0 || isResolvingMove || isGameFinished
-        }>
+        disabled={isDisabled(inventory.lollipop)}>
         <Text style={styles.jokerButtonText}>
           Lolipop ({inventory.lollipop})
         </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.jokerButton,
+          activeJoker === 'shuffle' && styles.jokerButtonActive,
+          inventory.shuffle <= 0 && styles.jokerButtonDisabled,
+        ]}
+        onPress={() =>
+          onToggleJoker(activeJoker === 'shuffle' ? null : 'shuffle')
+        }
+        disabled={isDisabled(inventory.shuffle)}>
+        <Text style={styles.jokerButtonText}>
+          Karıştır ({inventory.shuffle})
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.jokerButton,
+          activeJoker === 'party' && styles.jokerButtonActive,
+          inventory.party <= 0 && styles.jokerButtonDisabled,
+        ]}
+        onPress={() => onToggleJoker(activeJoker === 'party' ? null : 'party')}
+        disabled={isDisabled(inventory.party)}>
+        <Text style={styles.jokerButtonText}>Parti ({inventory.party})</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.jokerButton,
+          activeJoker === 'swap' && styles.jokerButtonActive,
+          inventory.swap <= 0 && styles.jokerButtonDisabled,
+        ]}
+        onPress={() => onToggleJoker(activeJoker === 'swap' ? null : 'swap')}
+        disabled={isDisabled(inventory.swap)}>
+        <Text style={styles.jokerButtonText}>Değiştir ({inventory.swap})</Text>
       </TouchableOpacity>
     </View>
   );

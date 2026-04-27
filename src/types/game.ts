@@ -12,7 +12,14 @@ export type JokerType =
     | 'shuffle'
     | 'party';
 
-export type ActiveJokerType = null | 'lollipop' | 'fish';
+export type ActiveJokerType =
+  | null
+  | 'lollipop'
+  | 'fish'
+  | 'wheel'
+  | 'shuffle'
+  | 'party'
+  | 'swap';
 
 export type Cell = {
     row: number;
