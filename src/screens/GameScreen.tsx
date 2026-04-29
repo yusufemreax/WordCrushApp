@@ -18,11 +18,13 @@ import GameSelectionPanel from "../game/components/GameSelectionPanel";
 import GameResultPanel from "../game/components/GameResultPanel";
 import JokerBar from "../game/components/JokerBar";
 import { calculateComboResult } from "../game/utils/comboHelpers";
-import { applySpecialTileToLastCell, collectSpecialTileAffectedCells, getSpecialTileByWordLength } from "../game/utils/specialTileHelpers";
-import { getAllSpecialTilePositions, hasAnySpecialTile } from "../game/utils/gridStateHelpers";
+import { applySpecialTileToLastCell,  getSpecialTileByWordLength } from "../game/utils/specialTileHelpers";
 import { GAME_MESSAGES } from "../game/constants/gameMessages";
 import { getTriggeredSpecialCellsFromSelection, getTriggeredSpecialTileCountFromSelection } from "../game/utils/specialTileTriggerHelpers";
-import { uniqueCellPositions } from "../game/utils/cellPositionHelpers";
+import { findWordPathsInGrid } from "../game/utils/findWordPathsInGrid";
+import { selectNonOverlappingWords } from "../game/utils/nonOverlappingWordHelpers";
+import { regeneratePlayableGridPreservingSpecialTiles } from "../game/utils/gridRefreshHelpers";
+import GameInfoPanel from "../game/components/GameInfoPanel";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
@@ -48,10 +50,22 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
   const [activeJoker, setActiveJoker] = useState<ActiveJokerType>(null);
   const [isBoardGestureActive, setIsBoardGestureActive] = useState(false);
   const [pendingSwapCell, setPendingSwapCell] = useState<CellPosition | null>(null,);
+  const [availableNonOverlappingWords, setAvailableNonOverlappingWords] = useState<string[]>([]);
 
   const gameStartedAtRef = useRef(Date.now());
   const hasSavedGameRef = useRef(false);
   const selectedCellsRef = useRef<CellPosition[]>([]);
+  const scoreRef = useRef(0);
+  const foundWordsRef = useRef<string[]>([]);
+  const isFinishingGameRef = useRef(false);
+
+  useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+
+  useEffect(() => {
+    foundWordsRef.current = foundWords;
+  }, [foundWords]);
 
   useEffect(() => {
     selectedCellsRef.current = selectedCells;
@@ -68,10 +82,8 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
   useEffect(() => {
     const initiliazeGame = async () => {
       const generated = generateGrid(gridSize);
-      
-      const foundWords = findWordsInGrid(generated);
-      
-      refreshGridState(generated, foundWords);
+      setGrid(generated);
+      analyzeGridWords(generated);
 
       const inventory = await getJokerInventory();
       setLocalJokerInventory(inventory);
@@ -79,25 +91,6 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
 
     initiliazeGame();
   }, [gridSize]);
-
-  useEffect(() => {
-    if(remainingMoves === 0) {
-      setIsGameFinished(true);
-      setLastResultMessage('Oyun bitti. Hamle Hakkın tükendi.')
-    }
-  }, [remainingMoves]);
-
-  useEffect(() => {
-    const saveFinishedGame = async () => {
-      if(!isGameFinished || hasSavedGameRef.current) {
-        return;
-      }
-
-      await saveGameResult();
-    }
-    
-    saveFinishedGame();
-  }, [isGameFinished]);
 
   const currentWord = useMemo(() => {
       return selectedCells
@@ -114,33 +107,32 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
   }, [grid, selectedCells]);
 
   useEffect(() => {
-    const handleNoAvailableWords = async () => {
+    const handleNoAvailableWords = () => {
       if (grid.length === 0 || isGameFinished || isResolvingMove) {
         return;
       }
-      
-      const specialTileExists = hasAnySpecialTile(grid);
-      
-      if (availableWords.length !== 0) return;
 
-      if (specialTileExists) {
-        await triggerAllSpecialTilesAutomatically();
+      if (availableWords.length > 0) {
         return;
       }
-      
-      let regeneratedGrid = generateGrid(gridSize);
-      let regenaretedWords = findWordsInGrid(regeneratedGrid);
-      let retryCount = 0;
 
-      while (regenaretedWords.length === 0 && retryCount < 5) {
-        regeneratedGrid = generateGrid(gridSize);
-        regenaretedWords = findWordsInGrid(regeneratedGrid);
-        retryCount++;
-      }
-      
-      refreshGridState(regeneratedGrid,regenaretedWords);
+      const {regeneratedGrid, regeneratedWords} =
+        regeneratePlayableGridPreservingSpecialTiles(grid, gridSize);
+
+      setGrid(regeneratedGrid);
+
+      // Eğer önceki adımda analyzeGridWords fonksiyonunu eklediysen bunu kullan
+      analyzeGridWords(regeneratedGrid);
+
+      // Eğer analyzeGridWords yoksa aşağıdaki iki satırı kullanabilirsin:
+      // setAvailableWords(regeneratedWords);
+
       setSelectedCells([]);
-      setLastResultMessage(GAME_MESSAGES.regeneratedNoWordsNoSpecials);
+      selectedCellsRef.current = [];
+
+      setLastResultMessage(
+        'Gridde oluşturulabilir kelime kalmadı. Grid yenilendi. Varsa özel güçlerin konumu korundu.',
+      );
     };
 
     handleNoAvailableWords();
@@ -159,6 +151,22 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
 
     return () => subscription.remove();
   }, [score, foundWords, gridSize]);
+
+  const analyzeGridWords = (targetGrid: Cell[][]) => {
+    const foundWords = findWordsInGrid(targetGrid);
+    const wordPaths = findWordPathsInGrid(targetGrid);
+    const nonOverlappingWords = selectNonOverlappingWords(wordPaths).map(
+      item => item.word,
+    );
+
+    setAvailableWords(foundWords);
+    setAvailableNonOverlappingWords(nonOverlappingWords);
+
+    return {
+      foundWords,
+      nonOverlappingWords,
+    };
+  };
 
   const resetSelection = () => {
     if(isGameFinished || isResolvingMove) {
@@ -187,6 +195,8 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
         setAvailableWords,
       });
 
+      analyzeGridWords(grid);
+
       setLocalJokerInventory(updatedInventory);
       setActiveJoker(null);
       setPendingSwapCell(null);
@@ -208,6 +218,8 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
         setGrid,
         setAvailableWords,
       });
+      
+      analyzeGridWords(grid);
 
       setLocalJokerInventory(updatedInventory);
       setActiveJoker(null);
@@ -229,6 +241,7 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
         setAvailableWords,
       });
 
+      analyzeGridWords(grid);
       setLocalJokerInventory(updatedInventory);
       setActiveJoker(null);
       setPendingSwapCell(null);
@@ -240,11 +253,10 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
 
     if (joker === 'shuffle') {
       const shuffledGrid = shuffleGridCells(grid);
-      const updatedWords = findWordsInGrid(shuffledGrid);
+      analyzeGridWords(shuffledGrid);
       const updatedInventory = await consumeJoker(jokerInventory, 'shuffle');
 
       setGrid(shuffledGrid);
-      setAvailableWords(updatedWords);
       setLocalJokerInventory(updatedInventory);
       setActiveJoker(null);
       setPendingSwapCell(null);
@@ -262,7 +274,8 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
         setGrid,
         setAvailableWords,
       });
-
+      
+      analyzeGridWords(grid);
       setLocalJokerInventory(updatedInventory);
       setActiveJoker(null);
       setPendingSwapCell(null);
@@ -298,11 +311,10 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
       }
 
       const swappedGrid = swapGridCells(grid, pendingSwapCell, pressedCell);
-      const updatedWords = findWordsInGrid(swappedGrid);
+      analyzeGridWords(swappedGrid);
       const updatedInventory = await consumeJoker(jokerInventory, 'swap');
 
       setGrid(swappedGrid);
-      setAvailableWords(updatedWords);
       setLocalJokerInventory(updatedInventory);
       setPendingSwapCell(null);
       setActiveJoker(null);
@@ -405,12 +417,19 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
       return;
     }
     const selectedCellsSnapshot = [...selectedCellsRef.current];
+    
+    const nextRemainingMoves = Math.max(remainingMoves - 1, 0);
 
     if(selectedCellsSnapshot.length < 3) {
-      setRemainingMoves(prev => Math.max(prev - 1, 0));
+      setRemainingMoves(nextRemainingMoves);
       setLastResultMessage(GAME_MESSAGES.invalidShortSelectionMoveLost);
 
       resetSelection();
+
+      if (nextRemainingMoves === 0) {
+        await finishGameAndGoHome();
+      }
+      
       return;
     }
 
@@ -440,6 +459,8 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
         setAvailableWords,
       });
 
+      analyzeGridWords(animationResult.updatedGrid);
+
       const specialTile = getSpecialTileByWordLength(word.length);
 
       if (specialTile && lastCell) {
@@ -452,8 +473,14 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
         setGrid(gridWithSpecialTile);
       }
 
-      setScore(prev => prev + comboResult.totalScore);
-      setFoundWords(prev => [...prev, word]);
+      const updatedScore = scoreRef.current + comboResult.totalScore;
+      const updatedFoundWords = [...foundWordsRef.current, word];
+
+      scoreRef.current = updatedScore;
+      foundWordsRef.current = updatedFoundWords;
+
+      setScore(updatedScore);
+      setFoundWords(updatedFoundWords);
 
       const comboLabel = comboResult.words.length > 1 ? ` • ${comboResult.words.length}x combo` : '';
 
@@ -461,13 +488,16 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
 
       const triggeredLabel = triggeredSpecialCount > 0 ? ` • Tetiklenen Güç Sayısı: ${triggeredSpecialCount}` : '';
 
-    setLastResultMessage(`Geçerli kelime: ${word}${comboLabel} • +${comboResult.totalScore} puan • Kelimeler: ${comboResult.words.join(', ')}${specialTileLabel}${triggeredLabel} • Harfler patlatıldı • 1 hamle düşüldü.`,);
+      setLastResultMessage(`Geçerli kelime: ${word}${comboLabel} • +${comboResult.totalScore} puan • Kelimeler: ${comboResult.words.join(', ')}${specialTileLabel}${triggeredLabel} • Harfler patlatıldı • 1 hamle düşüldü.`,);
     } else {
       setLastResultMessage(`Geçersiz kelime: ${word} • 1 hamle düşüldü.`);
-      Alert.alert('Geçersiz kelime', `"${word}" sözlükte bulunamadı.\n\nSeçim sıfırlandı ve 1 hamle düşüldü.`);
     }
 
     resetSelection();
+
+    if (nextRemainingMoves === 0) {
+      await finishGameAndGoHome();
+    }
   };
 
   const handleExitGame = () => {
@@ -481,48 +511,11 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
           text: 'Evet',
           onPress: async () => {
             await saveGameResult();
-            navigation.navigate('Home');
+            navigation.replace('Home');
           },
         },
       ],
     );
-  };
-
-  const triggerAllSpecialTilesAutomatically = async () => {
-    const specialTilePositions = getAllSpecialTilePositions(grid);
-
-    if (specialTilePositions.length === 0) {
-      return;
-    }
-
-    let affectedCells: CellPosition[] = [];
-
-    specialTilePositions.forEach(position => {
-      const cell = grid[position.row]?.[position.col];
-
-      if (!cell?.specialTile) {
-        return;
-      }
-
-      const collected = collectSpecialTileAffectedCells(grid, position, cell.specialTile);
-
-      affectedCells = [...affectedCells, ...collected];
-    });
-
-    const uniqueCellsToRemove = uniqueCellPositions(affectedCells);
-
-    if (uniqueCellsToRemove.length === 0) {
-      return;
-    }
-
-    await animateCellRemoval({
-      grid,
-      targetCells: uniqueCellsToRemove,
-      setGrid,
-      setAvailableWords,
-    });
-
-    setLastResultMessage(`${GAME_MESSAGES.autoTriggeredSpecials} (${specialTilePositions.length})`,);
   };
 
   const saveGameResult = async () => {
@@ -534,12 +527,27 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
 
     const historyItem = buildGameHistoryItem({
       gridSize,
-      score,
-      foundWords,
+      score: scoreRef.current,
+      foundWords: foundWordsRef.current,
       startedAt: gameStartedAtRef.current,
     });
 
     await saveGameHistoryItem(historyItem);
+  };
+
+  const finishGameAndGoHome = async () => {
+    if (isFinishingGameRef.current) {
+      return;
+    }
+
+    isFinishingGameRef.current = true;
+
+    setIsGameFinished(true);
+    setLastResultMessage('Oyun bitti. Sonuç skor tablosuna kaydedildi.');
+
+    await saveGameResult();
+
+    navigation.replace('Home');
   };
 
   const refreshGridState = (updatedGrid: Cell[][], updatedWords: string[]) => {
@@ -561,17 +569,10 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
           isGameFinished={isGameFinished}
         />
 
-        <Text style={styles.subHeader}>Harfleri seçip kelime oluştur</Text>
-        <Text style={styles.wordCountText}>Gridde Oluşturulabilir Kelime Sayısı: {availableWords.length}</Text>
-
-        {availableWords.length > 0 && gridSize !== 10 && (
-            <View style={styles.debugBox}>
-                <Text style={styles.debugTitle}>Bulunan Kelimeler (test için)</Text>
-                <Text style={styles.debugWords}>
-                    {availableWords.slice(0, 10).join(', ')}
-                </Text>
-            </View>
-        )}
+        <GameInfoPanel
+          availableWordCount={availableNonOverlappingWords.length}
+          totalFoundWordCount={foundWords.length}
+        />
 
         <GameSelectionPanel
           currentWord={currentWord}
@@ -615,36 +616,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F4E8',
     padding: 16,
-  },
-  subHeader: {
-    fontSize: 14,
-    color: '#6B5B57',
-    marginBottom: 16,
-  },
-  wordCountText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#7A4E00',
-    marginBottom: 12,
-  },
-  debugBox: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E6D7BE',
-    padding: 12,
-    marginBottom: 16,
-  },
-  debugTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#3B2F2F',
-    marginBottom: 6,
-  },
-  debugWords: {
-    fontSize: 14,
-    color: '#5C4B51',
-    lineHeight: 20,
   },
   scrollContent: {
     paddingBottom: 24,

@@ -1,4 +1,4 @@
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {
   Alert,
   SafeAreaView,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
+import MarketJokerCard from '../components/MarketJokerCard';
 import {RootStackParamList} from '../types/navigation';
 import {JokerInventory} from '../types/game';
 import {JOKER_DEFINITIONS} from '../constants/jokers';
@@ -21,16 +22,18 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Market'>;
 
+const defaultInventory: JokerInventory = {
+  fish: 0,
+  wheel: 0,
+  lollipop: 0,
+  swap: 0,
+  shuffle: 0,
+  party: 0,
+};
+
 const MarketScreen: React.FC<Props> = ({navigation}) => {
   const [gold, setGold] = useState(0);
-  const [inventory, setInventory] = useState<JokerInventory>({
-    fish: 0,
-    wheel: 0,
-    lollipop: 0,
-    swap: 0,
-    shuffle: 0,
-    party: 0,
-  });
+  const [inventory, setInventory] = useState<JokerInventory>(defaultInventory);
 
   const loadMarketData = async () => {
     const currentGold = await getGoldAmount();
@@ -46,6 +49,27 @@ const MarketScreen: React.FC<Props> = ({navigation}) => {
     }, []),
   );
 
+  const marketSummary = useMemo(() => {
+    const totalJokers = Object.values(inventory).reduce(
+      (total, count) => total + count,
+      0,
+    );
+
+    const ownedJokerTypes = Object.values(inventory).filter(
+      count => count > 0,
+    ).length;
+
+    const mostExpensiveJoker = [...JOKER_DEFINITIONS].sort(
+      (a, b) => b.price - a.price,
+    )[0];
+
+    return {
+      totalJokers,
+      ownedJokerTypes,
+      mostExpensiveJoker,
+    };
+  }, [inventory]);
+
   const handlePurchase = async (
     jokerKey: keyof JokerInventory,
     price: number,
@@ -56,41 +80,80 @@ const MarketScreen: React.FC<Props> = ({navigation}) => {
     if (result.success) {
       await loadMarketData();
       Alert.alert('Başarılı', `${jokerName} satın alındı.`);
-    } else {
-      Alert.alert('Yetersiz Altın', result.message);
+      return;
     }
+
+    Alert.alert('Yetersiz Altın', result.message);
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Market</Text>
-        <Text style={styles.description}>
-          Satın aldığın jokerler oyun ekranında kullanılabilir hale gelir.
-        </Text>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Market</Text>
+          <Text style={styles.description}>
+            Joker satın al, oyun sırasında zor durumlarda avantaj kazan.
+          </Text>
+        </View>
 
         <View style={styles.goldCard}>
-          <Text style={styles.goldTitle}>Altın Miktarı</Text>
-          <Text style={styles.goldAmount}>{gold}</Text>
+          <View>
+            <Text style={styles.goldLabel}>Altın Miktarı</Text>
+            <Text style={styles.goldAmount}>{gold}</Text>
+          </View>
+
+          <View style={styles.goldIconBox}>
+            <Text style={styles.goldIcon}>🪙</Text>
+          </View>
+        </View>
+
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Toplam Joker</Text>
+            <Text style={styles.summaryValue}>{marketSummary.totalJokers}</Text>
+          </View>
+
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Joker Türü</Text>
+            <Text style={styles.summaryValue}>
+              {marketSummary.ownedJokerTypes}
+            </Text>
+          </View>
+        </View>
+
+        {marketSummary.mostExpensiveJoker && (
+          <View style={styles.tipCard}>
+            <Text style={styles.tipTitle}>Market İpucu</Text>
+            <Text style={styles.tipText}>
+              En pahalı joker: {marketSummary.mostExpensiveJoker.name} (
+              {marketSummary.mostExpensiveJoker.price} altın). Güçlü jokerleri
+              zor oyunlarda kullanmak daha avantajlıdır.
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Jokerler</Text>
+          <Text style={styles.sectionSubtitle}>
+            Satın aldıkların oyun ekranında görünür.
+          </Text>
         </View>
 
         {JOKER_DEFINITIONS.map(joker => (
-          <View key={joker.key} style={styles.itemCard}>
-            <Text style={styles.itemTitle}>{joker.name}</Text>
-            <Text style={styles.itemText}>{joker.description}</Text>
-            <Text style={styles.itemPrice}>Fiyat: {joker.price} altın</Text>
-            <Text style={styles.itemOwned}>
-              Sahip Olunan: {inventory[joker.key]}
-            </Text>
-
-            <TouchableOpacity
-              style={styles.buyButton}
-              onPress={() =>
-                handlePurchase(joker.key, joker.price, joker.name)
-              }>
-              <Text style={styles.buyButtonText}>Satın Al</Text>
-            </TouchableOpacity>
-          </View>
+          <MarketJokerCard
+            key={joker.key}
+            jokerKey={joker.key}
+            name={joker.name}
+            description={joker.description}
+            price={joker.price}
+            ownedCount={inventory[joker.key]}
+            currentGold={gold}
+            onBuyPress={() =>
+              handlePurchase(joker.key, joker.price, joker.name)
+            }
+          />
         ))}
 
         <TouchableOpacity
@@ -113,81 +176,112 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 24,
     paddingTop: 32,
-    paddingBottom: 24,
+    paddingBottom: 28,
+  },
+  header: {
+    marginBottom: 20,
   },
   title: {
     fontSize: 30,
     fontWeight: '800',
     color: '#3B2F2F',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   description: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#5C4B51',
-    marginBottom: 24,
-    lineHeight: 24,
+    lineHeight: 22,
   },
   goldCard: {
     backgroundColor: '#FFF7D6',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 18,
     borderWidth: 1,
     borderColor: '#E7CF77',
-    marginBottom: 18,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  goldTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+  goldLabel: {
+    fontSize: 14,
     color: '#7A4E00',
-    marginBottom: 8,
-  },
-  goldAmount: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#D98E04',
-  },
-  itemCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E6D7BE',
-    marginBottom: 16,
-  },
-  itemTitle: {
-    fontSize: 18,
     fontWeight: '700',
-    color: '#7A4E00',
-    marginBottom: 8,
-  },
-  itemText: {
-    fontSize: 15,
-    color: '#3B2F2F',
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  itemPrice: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#D98E04',
     marginBottom: 6,
   },
-  itemOwned: {
+  goldAmount: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#D98E04',
+  },
+  goldIconBox: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E7CF77',
+  },
+  goldIcon: {
+    fontSize: 30,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 14,
+  },
+  summaryCard: {
+    flex: 1,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E6D7BE',
+  },
+  summaryLabel: {
+    fontSize: 13,
+    color: '#8C7B75',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  summaryValue: {
+    fontSize: 24,
+    color: '#D98E04',
+    fontWeight: '900',
+  },
+  tipCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E6D7BE',
+    marginBottom: 20,
+  },
+  tipTitle: {
+    fontSize: 15,
+    color: '#7A4E00',
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  tipText: {
     fontSize: 14,
     color: '#5C4B51',
+    lineHeight: 20,
+  },
+  sectionHeader: {
     marginBottom: 12,
   },
-  buyButton: {
-    backgroundColor: '#D98E04',
-    height: 42,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+  sectionTitle: {
+    fontSize: 21,
+    fontWeight: '800',
+    color: '#3B2F2F',
+    marginBottom: 4,
   },
-  buyButtonText: {
-    color: '#FFF',
+  sectionSubtitle: {
     fontSize: 14,
-    fontWeight: '700',
+    color: '#5C4B51',
   },
   backButton: {
     backgroundColor: '#8C7B75',

@@ -1,3 +1,8 @@
+export type FoundWordPath = {
+    word: string;
+    path: CellPosition[];
+};
+
 export type SpecialTileType =
     | 'row_clear'
     | 'bomb'

@@ -26,3 +26,7 @@ export const addGameHistoryItem = async (item: GameHistoryItem): Promise<void> =
     const updatedHistory = [item, ...currentHistory];
     await saveGameHistory(updatedHistory);
 };
+
+export const clearGameHistory = async (): Promise<void> => {
+    await AsyncStorage.removeItem(GAME_HISTORY_KEY);
+};

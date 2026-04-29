@@ -33,7 +33,7 @@ const GameTopPanel: React.FC<Props> = ({
             <View style={styles.gameOverBox}>
             <Text style={styles.gameOverTitle}>Oyun Bitti</Text>
             <Text style={styles.gameOverText}>
-                Tüm hamlelerin tükendi. Oyun sonucu kaydedildi.
+                Oyun sonucu skor tablosuna kaydedildi.
             </Text>
             </View>
         )}

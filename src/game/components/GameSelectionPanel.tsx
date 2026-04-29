@@ -20,7 +20,7 @@ const GameSelectionPanel: React.FC<Props> = ({
       </Text>
       <Text style={styles.selectionCount}>Harf Sayısı: {selectedCount}</Text>
       <Text style={styles.selectionHint}>
-        Not: Parmağını çektiğinde seçim tamamlanır ve hamle düşer.
+        Parmağını sürükle, bırakınca kelime tamamlanır.
       </Text>
       <Text style={styles.activeJokerText}>Aktif Joker: {activeJokerLabel}</Text>
     </View>

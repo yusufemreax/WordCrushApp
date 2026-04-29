@@ -8,7 +8,7 @@ type Props = {
 const GameResultPanel: React.FC<Props> = ({message}) => {
   return (
     <View style={styles.resultBox}>
-      <Text style={styles.resultTitle}>Son Kontrol</Text>
+      <Text style={styles.resultTitle}>Oyun Durumu</Text>
       <Text style={styles.resultText}>{message}</Text>
     </View>
   );
