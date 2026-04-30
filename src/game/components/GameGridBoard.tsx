@@ -120,6 +120,36 @@ const GameGridBoard: React.FC<Props> = ({
     return selectedCells.some(cell => isSameCell(cell, {row, col}));
   };
 
+  const getCellCenter = (position: CellPosition) => {
+    return {
+      x: position.col * fullCellSize + fullCellSize / 2,
+      y: position.row * fullCellSize + fullCellSize / 2,
+    };
+  };
+
+  const getSelectionLines = () => {
+    return selectedCells.slice(1).map((cell, index) => {
+      const previousCell = selectedCells[index];
+
+      const start = getCellCenter(previousCell);
+      const end = getCellCenter(cell);
+
+      const deltaX = end.x - start.x;
+      const deltaY = end.y - start.y;
+
+      const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      const angle = Math.atan2(deltaY, deltaX);
+
+      return {
+        key: `${previousCell.row}-${previousCell.col}-${cell.row}-${cell.col}`,
+        left: (start.x + end.x) / 2 - length / 2,
+        top: (start.y + end.y) / 2 - 3,
+        width: length,
+        angle
+      };
+    });
+  };
+
   const isExploding = (row: number, col: number) => {
     return explodingCells.some(cell => isSameCell(cell, {row, col}));
   };
@@ -297,6 +327,23 @@ const GameGridBoard: React.FC<Props> = ({
           ))}
         </View>
 
+        <View pointerEvents='none' style={styles.selectionLineLayer}>
+          {getSelectionLines().map(line => (
+            <View
+              key={line.key}
+              style={[
+                styles.selectionLine,
+                {
+                  left: line.left,
+                  top: line.top,
+                  width: line.width,
+                  transform: [{rotate: `${line.angle}rad`}],
+                },
+              ]}
+            />
+          ))}
+        </View>
+
         <View style={styles.touchOverlay} {...panResponder.panHandlers} />
       </View>
     </View>
@@ -306,6 +353,20 @@ const GameGridBoard: React.FC<Props> = ({
 export default GameGridBoard;
 
 const styles = StyleSheet.create({
+    selectionLineLayer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+  },
+  selectionLine: {
+    position: 'absolute',
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(217, 142, 4, 0.55)',
+  },
   grid: {
     flex: 1,
     justifyContent: 'center',
