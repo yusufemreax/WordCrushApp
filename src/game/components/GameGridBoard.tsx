@@ -78,21 +78,28 @@ const GameGridBoard: React.FC<Props> = ({
   const cellTouchAreas = useMemo<CellTouchArea[]>(() => {
     const areas: CellTouchArea[] = [];
 
+    const visilbeCellOffset = cellGap / 2;
+
+    const touchInset = gridSize === 6 ? 8 : gridSize === 0 ? 6 : 4;
+
     for (let row = 0; row < gridSize; row++) {
       for (let col = 0; col < gridSize; col++) {
+        const visibleX1 = col * fullCellSize + visilbeCellOffset;
+        const visibleY1 = row * fullCellSize + visilbeCellOffset;
+
         areas.push({
           row,
           col,
-          x1: col * fullCellSize,
-          x2: (col + 1) * fullCellSize,
-          y1: row * fullCellSize,
-          y2: (row + 1) * fullCellSize,
+          x1: visibleX1 + touchInset,
+          x2: visibleX1 + cellSize - touchInset,
+          y1: visibleY1 + touchInset,
+          y2: visibleY1 + cellSize - touchInset,
         });
       }
     }
 
     return areas;
-  }, [gridSize, fullCellSize]);
+  }, [cellGap, ,cellSize, gridSize, fullCellSize]);
 
   const getTouchedCellFromLocalPoint = (
     x: number,
