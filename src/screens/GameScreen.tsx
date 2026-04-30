@@ -4,7 +4,6 @@ import { Alert, BackHandler, ScrollView, StyleSheet, Text, View } from "react-na
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { generateGrid } from "../game/utils/generateGrid";
-import { findWordsInGrid } from "../game/utils/findWordsInGrid";
 import { isAdjacentCell, isCellSelected, isSameCell } from "../game/utils/cellHelper";
 import { findWordPathsInGrid } from "../game/utils/findWordPathsInGrid";
 import { selectNonOverlappingWords } from "../game/utils/nonOverlappingWordHelpers";
@@ -15,7 +14,7 @@ import { buildGameHistoryItem, saveGameHistoryItem } from "../game/services/game
 import { useGameAnimations } from "../game/services/useGameAnimations";
 
 import { RootStackParamList } from "../types/navigation";
-import { Cell, CellPosition } from "../types/game";
+import { Cell, CellPosition, GameHistoryItem } from "../types/game";
 
 import { GAME_MESSAGES } from "../game/constants/gameMessages";
 
@@ -28,6 +27,7 @@ import GameSelectionPanel from "../game/components/GameSelectionPanel";
 import GameResultPanel from "../game/components/GameResultPanel";
 import JokerBar from "../game/components/JokerBar";
 import GameInfoPanel from "../game/components/GameInfoPanel";
+import GameEndModal from "../game/components/GameEndModal";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
@@ -44,7 +44,9 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
   const [foundWords, setFoundWords] = useState<string[]>([]);
   const [isBoardGestureActive, setIsBoardGestureActive] = useState(false);
   const [availableNonOverlappingWords, setAvailableNonOverlappingWords] = useState<string[]>([]);
-
+  const [isEndModalVisible, setIsEndModalVisible] = useState(false);
+  const [gameEndResult, setGameEndResult] = useState<GameHistoryItem | null>(null);
+  
   const gameStartedAtRef = useRef(Date.now());
   const hasSavedGameRef = useRef(false);
   const selectedCellsRef = useRef<CellPosition[]>([]);
@@ -249,12 +251,7 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
     );
   };
 
-  const saveGameResult = async () => {
-    if (hasSavedGameRef.current) {
-      return;
-    }
-
-    hasSavedGameRef.current = true;
+  const saveGameResult = async (): Promise<GameHistoryItem> => {
 
     const historyItem = buildGameHistoryItem({
       gridSize,
@@ -263,7 +260,14 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
       startedAt: gameStartedAtRef.current,
     });
 
+    if (hasSavedGameRef.current) {
+      return historyItem;
+    }
+
+    hasSavedGameRef.current = true;
     await saveGameHistoryItem(historyItem);
+
+    return historyItem;
   };
 
   const finishGameAndGoHome = async () => {
@@ -276,8 +280,14 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
     setIsGameFinished(true);
     setLastResultMessage('Oyun bitti. Sonuç skor tablosuna kaydedildi.');
 
-    await saveGameResult();
+    const historyItem = await saveGameResult();
 
+    setGameEndResult(historyItem);
+    setIsEndModalVisible(true);
+  };
+
+  const handleEndModalGoHome = () => {
+    setIsEndModalVisible(false);
     navigation.replace('Home');
   };
 
@@ -350,6 +360,12 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
           onGestureActiveChange={setIsBoardGestureActive}
         />
       </ScrollView>
+
+      <GameEndModal
+        visible={isEndModalVisible}
+        result={gameEndResult}
+        onGoHome={handleEndModalGoHome}
+      />
     </SafeAreaView>
   )
 }
