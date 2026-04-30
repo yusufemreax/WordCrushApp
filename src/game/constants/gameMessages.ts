@@ -1,4 +1,5 @@
 export const GAME_MESSAGES = {
+  invalidSelectionTitle: 'Geçersiz Seçim',
   invalidSelectionSameCell:
     'Aynı hücre bir kelimede tekrar seçilemez.',
   invalidSelectionNotAdjacent:
@@ -18,4 +19,10 @@ export const GAME_MESSAGES = {
   lollipopUsed: 'Lolipop Kırıcı kullanıldı. Seçilen harf yok edildi.',
   exitConfirmTitle: 'Oyundan Çık',
   exitConfirmMessage: 'Oyundan çıkmak istediğine emin misin?',
+  wheelUsed: 'Tekerlek jokeri kullanıldı. Seçilen hücrenin satırı ve sütunu temizlendi.',
+  shuffleUsed: 'Harf karıştırma jokeri kullanıldı. Grid karıştırıldı',
+  partyUsed: 'Paryi jokeri kullanıldı. Tüm grid yenilendi.',
+  firstSwapUsed: 'Serbest değiştirme aktif. Şimdi komşu ikinci hücreyi seç',
+  swapSameCell: 'Aynı hücre seçilemez. Komşu bir hücre seç',
+  secondSwapUsed: 'Serbest değiştirme kullanıldı. İki komşu hücrenin yeri değiştirildi.'
 };

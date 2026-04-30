@@ -1,29 +1,35 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { RootStackParamList } from "../types/navigation";
-import { ActiveJokerType, Cell, CellPosition, JokerInventory } from "../types/game";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { generateGrid } from "../game/utils/generateGrid";
 import { Alert, BackHandler, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { findWordsInGrid } from "../game/utils/findWordsInGrid";
-import { isAdjacentCell, isCellSelected, isSameCell } from "../game/utils/cellHelper";
+
+import { generateGrid } from "../game/utils/generateGrid";
 import { isValidWord } from "../game/utils/wordValidation";
-import { getJokerInventory} from "../storage/marketStorage";
+import { findWordsInGrid } from "../game/utils/findWordsInGrid";
+import { calculateComboResult } from "../game/utils/comboHelpers";
+import { isAdjacentCell, isCellSelected, isSameCell } from "../game/utils/cellHelper";
+import { getTriggeredSpecialCellsFromSelection, getTriggeredSpecialTileCountFromSelection } from "../game/utils/specialTileTriggerHelpers";
+import { findWordPathsInGrid } from "../game/utils/findWordPathsInGrid";
+import { selectNonOverlappingWords } from "../game/utils/nonOverlappingWordHelpers";
+import { regeneratePlayableGridPreservingSpecialTiles } from "../game/utils/gridRefreshHelpers";
+import { applySpecialTileToLastCell, getSpecialTileByWordLength } from "../game/utils/specialTileHelpers";
+
 import { buildGameHistoryItem, saveGameHistoryItem } from "../game/services/gameResultService";
+
 import { useGameAnimations } from "../game/services/useGameAnimations";
-import { consumeJoker, getActiveJokerLabel, getAllGridCellPositions, getFishRemovalCount, getRandomCellsForFish, getWheelAffectedCells, shuffleGridCells, swapGridCells } from "../game/services/jokerService";
+
+import { RootStackParamList } from "../types/navigation";
+import { ActiveJokerType, Cell, CellPosition, JokerInventory } from "../types/game";
+
+import { GAME_MESSAGES } from "../game/constants/gameMessages";
+
+import { useJokerActions } from "../game/hooks/useJokerActions";
+
 import GameTopPanel from "../game/components/GameTopPanel";
 import GameGridBoard from "../game/components/GameGridBoard";
 import GameSelectionPanel from "../game/components/GameSelectionPanel";
 import GameResultPanel from "../game/components/GameResultPanel";
 import JokerBar from "../game/components/JokerBar";
-import { calculateComboResult } from "../game/utils/comboHelpers";
-import { applySpecialTileToLastCell,  getSpecialTileByWordLength } from "../game/utils/specialTileHelpers";
-import { GAME_MESSAGES } from "../game/constants/gameMessages";
-import { getTriggeredSpecialCellsFromSelection, getTriggeredSpecialTileCountFromSelection } from "../game/utils/specialTileTriggerHelpers";
-import { findWordPathsInGrid } from "../game/utils/findWordPathsInGrid";
-import { selectNonOverlappingWords } from "../game/utils/nonOverlappingWordHelpers";
-import { regeneratePlayableGridPreservingSpecialTiles } from "../game/utils/gridRefreshHelpers";
 import GameInfoPanel from "../game/components/GameInfoPanel";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
@@ -39,17 +45,7 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
   const [score, setScore] = useState(0);
   const [isGameFinished, setIsGameFinished] = useState(false);
   const [foundWords, setFoundWords] = useState<string[]>([]);
-  const [jokerInventory, setLocalJokerInventory] = useState<JokerInventory>({
-    fish: 0,
-    wheel:0,
-    lollipop:0,
-    swap:0,
-    shuffle:0,
-    party:0,
-  });
-  const [activeJoker, setActiveJoker] = useState<ActiveJokerType>(null);
   const [isBoardGestureActive, setIsBoardGestureActive] = useState(false);
-  const [pendingSwapCell, setPendingSwapCell] = useState<CellPosition | null>(null,);
   const [availableNonOverlappingWords, setAvailableNonOverlappingWords] = useState<string[]>([]);
 
   const gameStartedAtRef = useRef(Date.now());
@@ -58,6 +54,32 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
   const scoreRef = useRef(0);
   const foundWordsRef = useRef<string[]>([]);
   const isFinishingGameRef = useRef(false);
+
+  const analyzeGridWords = (targetGrid: Cell[][]) => {
+    const foundWords = findWordsInGrid(targetGrid);
+    const wordPaths = findWordPathsInGrid(targetGrid);
+    const nonOverlappingWords = selectNonOverlappingWords(wordPaths).map(
+      item => item.word,
+    );
+
+    setAvailableWords(foundWords);
+    setAvailableNonOverlappingWords(nonOverlappingWords);
+
+    return {
+      foundWords,
+      nonOverlappingWords,
+    };
+  };
+
+  const {
+    animateCellRemoval,
+    columnFallAnimsRef,
+    columnOpacityAnimsRef,
+    explodingCells,
+    isResolvingMove,
+  } = useGameAnimations(gridSize);
+  
+  const { jokerInventory, activeJoker, activeJokerLabel, loadJokerInventory, handleToggleJoker, handleActiveJokerPress} = useJokerActions({grid, gridSize, setGrid, setAvailableWords, analyzeGridWords, animateCellRemoval, setLastResultMessage});
 
   useEffect(() => {
     scoreRef.current = score;
@@ -71,13 +93,6 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
     selectedCellsRef.current = selectedCells;
   }, [selectedCells]);
 
-  const {
-    animateCellRemoval,
-    columnFallAnimsRef,
-    columnOpacityAnimsRef,
-    explodingCells,
-    isResolvingMove,
-  } = useGameAnimations(gridSize);
 
   useEffect(() => {
     const initiliazeGame = async () => {
@@ -85,12 +100,11 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
       setGrid(generated);
       analyzeGridWords(generated);
 
-      const inventory = await getJokerInventory();
-      setLocalJokerInventory(inventory);
+      await loadJokerInventory();
     }
 
     initiliazeGame();
-  }, [gridSize]);
+  }, [gridSize, loadJokerInventory]);
 
   const currentWord = useMemo(() => {
       return selectedCells
@@ -152,180 +166,12 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
     return () => subscription.remove();
   }, [score, foundWords, gridSize]);
 
-  const analyzeGridWords = (targetGrid: Cell[][]) => {
-    const foundWords = findWordsInGrid(targetGrid);
-    const wordPaths = findWordPathsInGrid(targetGrid);
-    const nonOverlappingWords = selectNonOverlappingWords(wordPaths).map(
-      item => item.word,
-    );
-
-    setAvailableWords(foundWords);
-    setAvailableNonOverlappingWords(nonOverlappingWords);
-
-    return {
-      foundWords,
-      nonOverlappingWords,
-    };
-  };
-
   const resetSelection = () => {
     if(isGameFinished || isResolvingMove) {
       return;
     }
     selectedCellsRef.current = [];
     setSelectedCells([]);
-  };
-
-  const handleToggleJoker = (joker: ActiveJokerType) => {
-    setPendingSwapCell(null);
-    setActiveJoker(joker);
-  };
-
-  const handleActiveJokerPress = async (
-    joker: ActiveJokerType,
-    pressedCell: CellPosition,
-  ) => {
-    if (joker === 'lollipop') {
-      const updatedInventory = await consumeJoker(jokerInventory, 'lollipop');
-
-      await animateCellRemoval({
-        grid,
-        targetCells: [pressedCell],
-        setGrid,
-        setAvailableWords,
-      });
-
-      analyzeGridWords(grid);
-
-      setLocalJokerInventory(updatedInventory);
-      setActiveJoker(null);
-      setPendingSwapCell(null);
-      setLastResultMessage(GAME_MESSAGES.lollipopUsed);
-      return true;
-    }
-
-    if (joker === 'fish') {
-      const randomCells = getRandomCellsForFish(
-        grid,
-        getFishRemovalCount(gridSize),
-      );
-
-      const updatedInventory = await consumeJoker(jokerInventory, 'fish');
-
-      await animateCellRemoval({
-        grid,
-        targetCells: randomCells,
-        setGrid,
-        setAvailableWords,
-      });
-      
-      analyzeGridWords(grid);
-
-      setLocalJokerInventory(updatedInventory);
-      setActiveJoker(null);
-      setPendingSwapCell(null);
-      setLastResultMessage(
-        `Balık jokeri kullanıldı. ${randomCells.length} rastgele harf yok edildi.`,
-      );
-      return true;
-    }
-
-    if (joker === 'wheel') {
-      const affectedCells = getWheelAffectedCells(gridSize, pressedCell);
-      const updatedInventory = await consumeJoker(jokerInventory, 'wheel');
-
-      await animateCellRemoval({
-        grid,
-        targetCells: affectedCells,
-        setGrid,
-        setAvailableWords,
-      });
-
-      analyzeGridWords(grid);
-      setLocalJokerInventory(updatedInventory);
-      setActiveJoker(null);
-      setPendingSwapCell(null);
-      setLastResultMessage(
-        'Tekerlek jokeri kullanıldı. Seçilen hücrenin satırı ve sütunu temizlendi.',
-      );
-      return true;
-    }
-
-    if (joker === 'shuffle') {
-      const shuffledGrid = shuffleGridCells(grid);
-      analyzeGridWords(shuffledGrid);
-      const updatedInventory = await consumeJoker(jokerInventory, 'shuffle');
-
-      setGrid(shuffledGrid);
-      setLocalJokerInventory(updatedInventory);
-      setActiveJoker(null);
-      setPendingSwapCell(null);
-      setLastResultMessage('Harf Karıştırma kullanıldı. Grid karıştırıldı.');
-      return true;
-    }
-
-    if (joker === 'party') {
-      const allCells = getAllGridCellPositions(gridSize);
-      const updatedInventory = await consumeJoker(jokerInventory, 'party');
-
-      await animateCellRemoval({
-        grid,
-        targetCells: allCells,
-        setGrid,
-        setAvailableWords,
-      });
-      
-      analyzeGridWords(grid);
-      setLocalJokerInventory(updatedInventory);
-      setActiveJoker(null);
-      setPendingSwapCell(null);
-      setLastResultMessage(
-        'Parti Güçlendiricisi kullanıldı. Tüm grid yenilendi.',
-      );
-      return true;
-    }
-
-    if (joker === 'swap') {
-      if (!pendingSwapCell) {
-        setPendingSwapCell(pressedCell);
-        setLastResultMessage(
-          'Serbest Değiştirme aktif. Şimdi komşu ikinci hücreyi seç.',
-        );
-        return true;
-      }
-
-      if (
-        pendingSwapCell.row === pressedCell.row &&
-        pendingSwapCell.col === pressedCell.col
-      ) {
-        setLastResultMessage('Aynı hücre seçilemez. Komşu bir hücre seç.');
-        return true;
-      }
-
-      if (!isAdjacentCell(pendingSwapCell, pressedCell)) {
-        Alert.alert(
-          'Geçersiz Seçim',
-          'Serbest değiştirme için komşu bir hücre seçmelisin.',
-        );
-        return true;
-      }
-
-      const swappedGrid = swapGridCells(grid, pendingSwapCell, pressedCell);
-      analyzeGridWords(swappedGrid);
-      const updatedInventory = await consumeJoker(jokerInventory, 'swap');
-
-      setGrid(swappedGrid);
-      setLocalJokerInventory(updatedInventory);
-      setPendingSwapCell(null);
-      setActiveJoker(null);
-      setLastResultMessage(
-        'Serbest Değiştirme kullanıldı. İki komşu hücrenin yeri değiştirildi.',
-      );
-
-      return true;
-    }
-
-    return false;
   };
 
   const handleSelectionStart = async (row: number, col: number) => {
@@ -336,7 +182,7 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
     const pressedCell: CellPosition = {row, col};
 
     if (activeJoker) {
-      const handled = await handleActiveJokerPress(activeJoker, pressedCell);
+      const handled = await handleActiveJokerPress(pressedCell);
 
       if (handled) {
         return;
@@ -549,13 +395,6 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
 
     navigation.replace('Home');
   };
-
-  const refreshGridState = (updatedGrid: Cell[][], updatedWords: string[]) => {
-    setGrid(updatedGrid);
-    setAvailableWords(updatedWords);
-  };
-
-  const activeJokerLabel = pendingSwapCell ? 'Serbest Değiştirme: ikinci hücreyi seç': getActiveJokerLabel(activeJoker);
 
   return(
     <SafeAreaView style={styles.container}>
