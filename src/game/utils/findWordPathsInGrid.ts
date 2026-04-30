@@ -1,5 +1,6 @@
 import {WORD_DICTIONARY} from '../../data/wordDictionary';
 import {Cell, CellPosition, FoundWordPath} from '../../types/game';
+import { MAX_WORD_LENGTH, TrieNode, WORD_TRIE } from './dictionaryIndex';
 
 const DIRECTIONS = [
   [-1, -1],
@@ -16,110 +17,87 @@ const isInsideGrid = (row: number, col: number, size: number): boolean => {
   return row >= 0 && row < size && col >= 0 && col < size;
 };
 
-const findPathForWordFromCell = (
-  grid: Cell[][],
-  word: string,
-  row: number,
-  col: number,
-  index: number,
-  visited: boolean[][],
-  path: CellPosition[],
-): CellPosition[] | null => {
-  const size = grid.length;
-
-  if (!isInsideGrid(row, col, size)) {
-    return null;
-  }
-
-  if (visited[row][col]) {
-    return null;
-  }
-
-  const cell = grid[row][col];
-
-  if (!cell || cell.letter !== word[index]) {
-    return null;
-  }
-
-  const nextPath = [...path, {row, col}];
-
-  if (index === word.length - 1) {
-    return nextPath;
-  }
-
-  visited[row][col] = true;
-
-  for (const [dRow, dCol] of DIRECTIONS) {
-    const nextRow = row + dRow;
-    const nextCol = col + dCol;
-
-    const result = findPathForWordFromCell(
-      grid,
-      word,
-      nextRow,
-      nextCol,
-      index + 1,
-      visited,
-      nextPath,
-    );
-
-    if (result) {
-      visited[row][col] = false;
-      return result;
-    }
-  }
-
-  visited[row][col] = false;
-  return null;
-};
-
-const findPathForWord = (grid: Cell[][], word: string): CellPosition[] | null => {
-  const size = grid.length;
-
-  for (let row = 0; row < size; row++) {
-    for (let col = 0; col < size; col++) {
-      const visited = Array.from({length: size}, () =>
-        Array(size).fill(false),
-      );
-
-      const result = findPathForWordFromCell(
-        grid,
-        word,
-        row,
-        col,
-        0,
-        visited,
-        [],
-      );
-
-      if (result) {
-        return result;
-      }
-    }
-  }
-
-  return null;
-};
-
 export const findWordPathsInGrid = (grid: Cell[][]): FoundWordPath[] => {
-  const foundWords: FoundWordPath[] = [];
+  const size = grid.length;
+  const foundWordMap = new Map<string, CellPosition[]>();
 
-  WORD_DICTIONARY.forEach(word => {
-    const normalizedWord = word.trim().toUpperCase();
-
-    if (normalizedWord.length < 3) {
+  const dfs = ({
+    row,
+    col,
+    node,
+    visited,
+    path,
+  }: {
+    row: number;
+    col: number;
+    node: TrieNode;
+    visited: boolean[][];
+    path: CellPosition[];
+  } ) => {
+    if (!isInsideGrid(row, col, size)) {
       return;
     }
 
-    const path = findPathForWord(grid, normalizedWord);
+    if (visited[row][col]) {
+      return;
+    }
 
-    if (path) {
-      foundWords.push({
-        word: normalizedWord,
-        path,
+    if (path.length >= MAX_WORD_LENGTH) {
+      return;
+    }
+
+    const cell = grid[row][col];
+
+    if (!cell?.letter) {
+      return;
+    }
+
+    const letter = cell.letter.toLocaleUpperCase('tr-TR');
+    const nextNode = node.children.get(letter);
+
+    if (!nextNode) {
+      return;
+    }
+
+    const nextPath = [...path, {row, col}];
+
+    if (nextNode.word && !foundWordMap.has(nextNode.word)) {
+      foundWordMap.set(nextNode.word, nextPath);
+    }
+
+    visited[row][col] = true;
+
+    for (const [dRow, dCol] of DIRECTIONS) {
+      dfs({
+        row: row + dRow,
+        col: col + dCol,
+        node: nextNode,
+        visited,
+        path: nextPath,
       });
     }
-  });
 
-  return foundWords;
+    visited[row][col] = false;
+  };
+
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      const visited = Array.from({length: size}, () => Array(size).fill(false));
+      dfs({
+        row,
+        col,
+        node: WORD_TRIE,
+        visited,
+        path: [],
+      });
+    }
+  }
+
+  return [...foundWordMap.entries()].map(([word, path]) => ({word, path})).sort((a, b) => {
+    if (b.word.length === a.word.length) {
+      return a.word.localeCompare(b.word, 'tr');
+    }
+
+    return b.word.length - a.word.length;
+  });
 };

@@ -23,6 +23,7 @@ type CellTouchArea = {
 type Props = {
   grid: (Cell | null)[][];
   gridSize: number;
+  currentWord: string;
   isGameFinished: boolean;
   isResolvingMove: boolean;
   selectedCells: CellPosition[];
@@ -38,6 +39,7 @@ type Props = {
 const GameGridBoard: React.FC<Props> = ({
   grid,
   gridSize,
+  currentWord,
   isGameFinished,
   isResolvingMove,
   selectedCells,
@@ -155,6 +157,35 @@ const GameGridBoard: React.FC<Props> = ({
         angle
       };
     });
+  };
+
+  const getFloatingWordBubbleStyle = () => {
+    if (selectedCells.length === 0) {
+      return null;
+    }
+
+    const lastCell = selectedCells[selectedCells.length - 1];
+    const center = getCellCenter(lastCell);
+
+    const bubbleWidth = Math.min(180, Math.max(76, currentWord.length * 16));
+    const bubbleHeight = 34;
+
+    let left = center.x - bubbleWidth / 2;
+    let top = center.y - fullCellSize - bubbleHeight / 2;
+
+    if (left < 4) {
+      left = 4;
+    }
+
+    if (left + bubbleWidth > boardSize - 4) {
+      left = boardSize - bubbleWidth - 4;
+    }
+
+    if (top < 4) {
+      top = center.y + fullCellSize / 2;
+    }
+
+    return {left, top, width: bubbleWidth};
   };
 
   const isExploding = (row: number, col: number) => {
@@ -351,6 +382,14 @@ const GameGridBoard: React.FC<Props> = ({
           ))}
         </View>
 
+        {currentWord.length > 0 && selectedCells.length > 0 && (
+          <View
+            pointerEvents="none"
+            style={[styles.wordBubble, getFloatingWordBubbleStyle()]}>
+            <Text style={styles.wordBubbleText}>{currentWord}</Text>
+          </View>
+        )}
+
         <View style={styles.touchOverlay} {...panResponder.panHandlers} />
       </View>
     </View>
@@ -360,7 +399,25 @@ const GameGridBoard: React.FC<Props> = ({
 export default GameGridBoard;
 
 const styles = StyleSheet.create({
-    selectionLineLayer: {
+  wordBubble: {
+    position: 'absolute',
+    minHeight: 34,
+    borderRadius: 999,
+    backgroundColor: '#3B2F2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    zIndex: 30,
+    borderWidth: 2,
+    borderColor: '#D98E04',
+  },
+  wordBubbleText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  selectionLineLayer: {
     position: 'absolute',
     left: 0,
     top: 0,

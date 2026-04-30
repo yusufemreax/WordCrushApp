@@ -1,4 +1,5 @@
 import { WORD_DICTIONARY } from "../../data/wordDictionary";
+import { WORD_SET } from "./dictionaryIndex";
 import { calculateWordScore } from "./scoreHelpers";
 
 export type ComboResult = {
@@ -6,58 +7,44 @@ export type ComboResult = {
     totalScore: number;
 };
 
-const isSubsequence = (mainWord: string, candidateWord: string): boolean => {
-    let candidateIndex = 0;
+const generateSubsequences = (word: string): string[] => {
+    const normalizedWord = word.trim().toLocaleUpperCase('tr-TR');
+    const results = new Set<string>();
 
-    for (let i = 0; i < mainWord.length; i++) {
-        if (mainWord[i] === candidateWord[candidateIndex]) {
-            candidateIndex++;
+    const dfs = (index: number, current: string) => {
+        if (index === normalizedWord.length) {
+            if (current.length >= 3) {
+                results.add(current);
+            }
+
+            return;
         }
 
-        if(candidateIndex === candidateWord.length) {
-            return true;
-        }
-    }
+        dfs(index + 1, current + normalizedWord[index]);
+        dfs(index + 1, current);
+    };
 
-    return false;
+    dfs(0, '');
+
+    return[...results];
 };
 
 export const getComboWords = (mainWord: string): string[] => {
-    const normalizedMainWord = mainWord.trim().toUpperCase();
+    return generateSubsequences(mainWord)
+        .filter(word => WORD_SET.has(word))
+        .sort((a, b) => {
+            if (b.length === a.length) {
+                return a.localeCompare(b, 'tr');
+            }
 
-    const uniqueWords = new Set<string>();
-
-    WORD_DICTIONARY.forEach(word => {
-        const normalizedCandidate = word.trim().toUpperCase();
-
-        if (normalizedCandidate.length < 3) {
-            return;
-        }
-
-        if(normalizedCandidate.length > normalizedMainWord.length) {
-            return;
-        }
-
-        if(isSubsequence(normalizedMainWord, normalizedCandidate)) {
-            uniqueWords.add(normalizedCandidate);
-        }
-    });
-
-    return [...uniqueWords].sort((a, b) => {
-        if (b.length === a.length) {
-            return a.localeCompare(b, 'tr');
-        }
-
-        return b.length - a.length;
-    });
+            return b.length - a.length;
+        });
 };
 
 export const calculateComboResult = (mainWord: string): ComboResult => {
     const comboWords = getComboWords(mainWord);
+
     const totalScore = comboWords.reduce((total, word) => total + calculateWordScore(word), 0);
 
-    return {
-        words: comboWords,
-        totalScore
-    };
+    return {words: comboWords, totalScore};
 };

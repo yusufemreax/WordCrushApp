@@ -1,6 +1,6 @@
-import { WORD_DICTIONARY } from "../../data/wordDictionary";
+import {WORD_DICTIONARY} from '../../data/wordDictionary';
+import { isDictionaryWord } from './dictionaryIndex';
 
 export const isValidWord = (word: string): boolean => {
-    const normalizedWord = word.trim().toUpperCase();
-    return WORD_DICTIONARY.includes(normalizedWord);
+  return isDictionaryWord(word);
 };

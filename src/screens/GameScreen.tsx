@@ -53,19 +53,14 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
   const isFinishingGameRef = useRef(false);
 
   const analyzeGridWords = (targetGrid: Cell[][]) => {
-    const foundWords = findWordsInGrid(targetGrid);
     const wordPaths = findWordPathsInGrid(targetGrid);
-    const nonOverlappingWords = selectNonOverlappingWords(wordPaths).map(
-      item => item.word,
-    );
+    const foundWords = wordPaths.map(item => item.word);
+    const nonOverlappingWords = selectNonOverlappingWords(wordPaths).map(item => item.word);
 
     setAvailableWords(foundWords);
     setAvailableNonOverlappingWords(nonOverlappingWords);
 
-    return {
-      foundWords,
-      nonOverlappingWords,
-    };
+    return {foundWords, nonOverlappingWords};
   };
 
   const {
@@ -342,6 +337,7 @@ const GameScreen: React.FC<Props> = ({route, navigation}) => {
         <GameGridBoard
           grid={grid}
           gridSize={gridSize}
+          currentWord={currentWord}
           isGameFinished={isGameFinished}
           isResolvingMove={isResolvingMove}
           selectedCells={selectedCells}
